@@ -11,4 +11,6 @@ public class Session {
     private boolean enrolled;
     private boolean cancelled;
     private boolean attended;
+    
+    private boolean treated;
 }

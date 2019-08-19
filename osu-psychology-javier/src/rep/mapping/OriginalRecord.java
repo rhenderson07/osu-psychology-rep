@@ -8,17 +8,13 @@ import lombok.Data;
 
 @Data
 public class OriginalRecord {
-	private Integer id;
-    private String email;
+	private String id;
     private Double debit; //absence
     private Double creditEarned; //credit
-    private LocalDateTime cancelDateTime; //dropped
+    private LocalDateTime cancelDateTime; //cancel
     private LocalDateTime enrollDateTime; //enroll
     private String experimentId; //experiment
-    //private String removeExpDelete; 
-    private String code; //sessionCode
+    private String sessionCode; //code
     private LocalDate sessionDate;
     private LocalTime startTime; // sessionTime
-    //private LocalTime endTime;
-    private Integer eventDateOffset; //event_Date
 }

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import rep.mapping.domain.Participant;
 import rep.mapping.domain.Session;
@@ -26,7 +27,10 @@ public class RepDataMapper {
 	private final String sourceRepDataFilePathStr;
 	private final String destRepDataFilePathStr;
 
-	private static final String NULL_VAL = "\\N";
+	private static final String TREATMENT_SESSION_CODE = "SRF1R1";
+	private static final String NULL_VAL = "NULL";
+	
+	private static final String OUTPUT_RECORDS_HEADERS = "participantId,dayNum,date,enrolledCount,participatedCount,creditsEarned,cumulativeCreditsEarned,recievedTreatment,cancelCount,cumulativeCancel";
 
 	private final LocalDate firstDate;
 	private final LocalDate lastDate;
@@ -38,8 +42,7 @@ public class RepDataMapper {
 		lastDate = endDate;
 	}
 
-	private static final String OUTPUT_RECORDS_HEADERS = "participantId,dayNum,date,enrolledCount,participatedCount,creditsEarned,cumulativeCreditsEarned";
-
+	
 	private List<String> readSourceData(Path srcDataPath) {
 		List<String> originalRecords = Collections.emptyList();
 		try {
@@ -63,6 +66,8 @@ public class RepDataMapper {
 		List<OutputRecord> daySummaries = new ArrayList<>();
 
 		double cumulativeCreditsEarned = 0.0;
+		int cumulativeCancel = 0;
+		boolean hasRecievedTreatment = false;
 
 		for (LocalDate d = firstDate; !d.isAfter(lastDate); d = d.plusDays(1)) {
 			OutputRecord outputRecord = new OutputRecord();
@@ -78,10 +83,20 @@ public class RepDataMapper {
 			outputRecord.setEnrolledCount(sessionsToday.stream().filter(Session::isEnrolled).count());
 			outputRecord.setParticipatedCount(sessionsToday.stream().filter(Session::isAttended).count());
 
-			double creditsEarnedToday = sumCreditsForSessions(sessionsToday);
+			double creditsEarnedToday = sum(sessionsToday.stream().map(Session::getCreditsEarned));
 			outputRecord.setCreditsEarned(creditsEarnedToday);
 			cumulativeCreditsEarned += creditsEarnedToday;
-			outputRecord.setCumulativeCreditsEarned(cumulativeCreditsEarned);
+			outputRecord.setCumulativeCreditsEarned(cumulativeCreditsEarned);			
+			
+
+			long cancelsToday = sessionsToday.stream().filter(Session::isCancelled).count();
+			outputRecord.setCancelCount(cancelsToday);
+			cumulativeCancel += cancelsToday;
+			outputRecord.setCumulativeCancel(cumulativeCancel);
+			
+			
+			hasRecievedTreatment = hasRecievedTreatment || sessionsToday.stream().anyMatch(Session::isTreated);
+			outputRecord.setRecievedTreatment(hasRecievedTreatment);
 
 			daySummaries.add(outputRecord);
 		}
@@ -89,9 +104,8 @@ public class RepDataMapper {
 		return daySummaries;
 	}
 
-	private double sumCreditsForSessions(Collection<Session> sessions) {
-		return sessions.stream() //
-				.map(Session::getCreditsEarned) //
+	private double sum(Stream<Double> numberStream) {
+		return numberStream //
 				.filter(Objects::nonNull) //
 				.reduce(0.0, (a, b) -> a + b);
 	}
@@ -101,24 +115,17 @@ public class RepDataMapper {
 
 		OriginalRecord record = new OriginalRecord();
 
-		record.setId(parseInt(fields[0]));
-		record.setEmail(fields[1]);
-		record.setDebit(parseDouble(fields[2]));
-		record.setCreditEarned(parseDouble(fields[3]));
-		record.setCancelDateTime(parseDateTime(fields[4]));
-		record.setEnrollDateTime(parseDateTime(fields[5]));
-		record.setExperimentId(fields[6]);
-		record.setCode(fields[7]);
-		record.setSessionDate(parseDate(fields[8]));
-		record.setStartTime(parseTime(fields[9]));
-		// ignore col 10 for REP_start
-		record.setEventDateOffset(parseInt(fields[11]));
+		record.setId(fields[0]);
+		record.setDebit(parseDouble(fields[1]));
+		record.setCreditEarned(parseDouble(fields[2]));
+		record.setCancelDateTime(parseDateTime(fields[3]));
+		record.setEnrollDateTime(parseDateTime(fields[4]));
+		record.setExperimentId(fields[5]);
+		record.setSessionCode(fields[6]);
+		record.setSessionDate(parseDate(fields[7]));
+		record.setStartTime(parseTime(fields[8]));
 
 		return record;
-	}
-	
-	private Integer parseInt(String intStr) {
-		return NULL_VAL.equals(intStr) ? null : Integer.parseInt(intStr);
 	}
 	
 	private Double parseDouble(String doubleStr) {
@@ -126,7 +133,7 @@ public class RepDataMapper {
 	}
 
 	private LocalDate parseDate(String dateStr) {
-		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("M/d/yyyy");
+		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("M/d/yy");
 		return NULL_VAL.equals(dateStr) ? null : LocalDate.parse(dateStr, dateFormatter);
 	}
 
@@ -136,8 +143,12 @@ public class RepDataMapper {
 	}
 
 	private LocalTime parseTime(String timeStr) {
-		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("h:mm:ss a");
+		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("H:mm:ss");
 		return NULL_VAL.equals(timeStr) ? null : LocalTime.parse(timeStr, dateFormatter);
+	}
+	
+	private String asString(boolean bool) {
+		return bool ? "1" : "0";
 	}
 
 	private String formatOutput(OutputRecord outputRecord) {
@@ -149,7 +160,10 @@ public class RepDataMapper {
 		sb.append(outputRecord.getEnrolledCount() + ",");
 		sb.append(outputRecord.getParticipatedCount() + ",");
 		sb.append(outputRecord.getCreditsEarned() + ",");
-		sb.append(outputRecord.getCumulativeCreditsEarned());
+		sb.append(outputRecord.getCumulativeCreditsEarned() + ",");
+		sb.append(asString(outputRecord.isRecievedTreatment())+ ",");
+		sb.append(outputRecord.getCancelCount() + ",");
+		sb.append(outputRecord.getCumulativeCancel());
 
 		return sb.toString();
 	}
@@ -159,10 +173,10 @@ public class RepDataMapper {
 				.map(this::parseOriginalRecord) //
 				.collect(Collectors.toList());
 
-		Map<String, List<OriginalRecord>> emailToRecordMap = originalRecords.stream() //
-				.collect(Collectors.groupingBy(OriginalRecord::getEmail));
+		Map<String, List<OriginalRecord>> participantIdToRecordMap = originalRecords.stream() //
+				.collect(Collectors.groupingBy(OriginalRecord::getId));
 
-		return emailToRecordMap.entrySet().stream() //
+		return participantIdToRecordMap.entrySet().stream() //
 				.map(x -> new Participant(x.getKey(), mapToSessions(x.getValue()))) //
 				.sorted(Comparator.comparing(Participant::getId)) //
 				.collect(Collectors.toList());
@@ -182,6 +196,7 @@ public class RepDataMapper {
 		session.setAttended(originalRecord.getCreditEarned() != null && originalRecord.getCreditEarned() > 0);
 		session.setSessionDate(originalRecord.getSessionDate());
 		session.setCancelled(originalRecord.getCancelDateTime() != null);
+		session.setTreated(TREATMENT_SESSION_CODE.equals(originalRecord.getSessionCode()));
 
 		return session;
 	}
@@ -215,10 +230,10 @@ public class RepDataMapper {
 	public static void main(String[] args) {
 		System.out.println("Begin ...");
 
-		String sourcePath = "C:\\Users\\Randy\\Desktop\\osu-psych\\Javier data 2018\\Fazio Data AU2017 - Student Data.csv";
-		String destPath = "C:\\Users\\Randy\\Desktop\\osu-psych\\Javier data 2018\\restructured-REP-data.csv";
-		LocalDate firstDate = LocalDate.of(2017, 8, 22);
-		LocalDate lastDate = LocalDate.of(2017, 12, 7);
+		String sourcePath = "C:\\Users\\Randy\\Desktop\\osu-psych\\Javier data 2019\\REP-SP19-enrollments-PH.csv";
+		String destPath = "C:\\Users\\Randy\\Desktop\\osu-psych\\Javier data 2019\\REP-SP19-enrollments-PH - restructured.csv";
+		LocalDate firstDate = LocalDate.of(2019, 1, 7);
+		LocalDate lastDate = LocalDate.of(2019, 4, 16);
 
 		RepDataMapper mapper = new RepDataMapper(sourcePath, destPath, firstDate, lastDate);
 		mapper.run();

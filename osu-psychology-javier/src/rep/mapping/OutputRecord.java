@@ -13,4 +13,9 @@ public class OutputRecord {
     private double cumulativeCreditsEarned;
     private long enrolledCount;
     private long participatedCount;
+    
+
+    private double cancelCount;
+    private double cumulativeCancel;
+    private boolean recievedTreatment;    
 }
