@@ -30,8 +30,6 @@ public class RepDataMapper {
 	private static final String TREATMENT_SESSION_CODE = "SRF1R1";
 	private static final String NULL_VAL = "NULL";
 	
-	private static final String OUTPUT_RECORDS_HEADERS = "participantId,dayNum,date,enrolledCount,participatedCount,creditsEarned,cumulativeCreditsEarned,recievedTreatment,cancelCount,cumulativeCancel";
-
 	private final LocalDate firstDate;
 	private final LocalDate lastDate;
 
@@ -66,7 +64,7 @@ public class RepDataMapper {
 		List<OutputRecord> daySummaries = new ArrayList<>();
 
 		double cumulativeCreditsEarned = 0.0;
-		int cumulativeCancel = 0;
+		double cumulativeCreditsMissed = 0.0;
 		boolean hasRecievedTreatment = false;
 
 		for (LocalDate d = firstDate; !d.isAfter(lastDate); d = d.plusDays(1)) {
@@ -89,13 +87,15 @@ public class RepDataMapper {
 			outputRecord.setCumulativeCreditsEarned(cumulativeCreditsEarned);			
 			
 
-			long cancelsToday = sessionsToday.stream().filter(Session::isCancelled).count();
-			outputRecord.setCancelCount(cancelsToday);
-			cumulativeCancel += cancelsToday;
-			outputRecord.setCumulativeCancel(cumulativeCancel);
+			outputRecord.setCancelCount(sessionsToday.stream().filter(Session::isCancelled).count());
+			outputRecord.setMissedCount(sessionsToday.stream().filter(Session::isMissed).count());
+			double creditsMissedToday = sum(sessionsToday.stream().map(Session::getCreditsMissed));
+			outputRecord.setCreditsMissed(creditsMissedToday);
+			cumulativeCreditsMissed += creditsMissedToday;
+			outputRecord.setCumulativeCreditsMissed(cumulativeCreditsMissed);
 			
 			
-			hasRecievedTreatment = hasRecievedTreatment || sessionsToday.stream().anyMatch(Session::isTreated);
+			hasRecievedTreatment = hasRecievedTreatment || sessionsToday.stream().filter(Session::isAttended).anyMatch(Session::isTreated);
 			outputRecord.setRecievedTreatment(hasRecievedTreatment);
 
 			daySummaries.add(outputRecord);
@@ -116,7 +116,7 @@ public class RepDataMapper {
 		OriginalRecord record = new OriginalRecord();
 
 		record.setId(fields[0]);
-		record.setDebit(parseDouble(fields[1]));
+		record.setCreditMissed(parseDouble(fields[1]));
 		record.setCreditEarned(parseDouble(fields[2]));
 		record.setCancelDateTime(parseDateTime(fields[3]));
 		record.setEnrollDateTime(parseDateTime(fields[4]));
@@ -151,6 +151,8 @@ public class RepDataMapper {
 		return bool ? "1" : "0";
 	}
 
+	private static final String OUTPUT_RECORDS_HEADERS = "participantId,dayNum,date,enrolledCount,participatedCount,creditsEarned,cumulativeCreditsEarned,recievedTreatment,cancelCount,missedCount,creditsMissed,cumulativeCreditsMissed";
+	
 	private String formatOutput(OutputRecord outputRecord) {
 		StringBuilder sb = new StringBuilder("");
 
@@ -163,7 +165,10 @@ public class RepDataMapper {
 		sb.append(outputRecord.getCumulativeCreditsEarned() + ",");
 		sb.append(asString(outputRecord.isRecievedTreatment())+ ",");
 		sb.append(outputRecord.getCancelCount() + ",");
-		sb.append(outputRecord.getCumulativeCancel());
+
+		sb.append(outputRecord.getMissedCount() + ",");
+		sb.append(outputRecord.getCreditsMissed() + ",");
+		sb.append(outputRecord.getCumulativeCreditsMissed());
 
 		return sb.toString();
 	}
@@ -196,6 +201,10 @@ public class RepDataMapper {
 		session.setAttended(originalRecord.getCreditEarned() != null && originalRecord.getCreditEarned() > 0);
 		session.setSessionDate(originalRecord.getSessionDate());
 		session.setCancelled(originalRecord.getCancelDateTime() != null);
+		
+		session.setMissed(originalRecord.getCreditMissed() != null && originalRecord.getCreditMissed() > 0);
+		session.setCreditsMissed(originalRecord.getCreditMissed());
+		
 		session.setTreated(TREATMENT_SESSION_CODE.equals(originalRecord.getSessionCode()));
 
 		return session;

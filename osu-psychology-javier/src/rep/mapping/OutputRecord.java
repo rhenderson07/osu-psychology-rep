@@ -15,7 +15,10 @@ public class OutputRecord {
     private long participatedCount;
     
 
-    private double cancelCount;
-    private double cumulativeCancel;
+    private long cancelCount;
     private boolean recievedTreatment;    
+
+    private long missedCount;
+    private double creditsMissed;
+    private double cumulativeCreditsMissed;
 }

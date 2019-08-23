@@ -9,7 +9,7 @@ import lombok.Data;
 @Data
 public class OriginalRecord {
 	private String id;
-    private Double debit; //absence
+    private Double creditMissed; //absence
     private Double creditEarned; //credit
     private LocalDateTime cancelDateTime; //cancel
     private LocalDateTime enrollDateTime; //enroll

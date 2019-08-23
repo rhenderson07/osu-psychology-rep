@@ -11,6 +11,8 @@ public class Session {
     private boolean enrolled;
     private boolean cancelled;
     private boolean attended;
-    
+
+    private boolean missed;
+    private Double creditsMissed;
     private boolean treated;
 }
